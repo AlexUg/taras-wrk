@@ -30,3 +30,14 @@
 *.exe
 *.out
 *.app
+
+# KiCAD files
+**/*.bak
+**/*_bak
+**/*-bak
+**/*.log
+
+#FreeCAD files
+3dmodels/**/*.obj
+3dmodels/**/*.FCStd1
+
