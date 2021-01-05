@@ -144,17 +144,6 @@ $EndComp
 Wire Wire Line
 	2550 1750 2550 1950
 $Comp
-L Arduino:Arduino_Nano_Socket XA1
-U 1 1 5FF54019
-P 6250 2750
-F 0 "XA1" H 6250 3987 60  0000 C CNN
-F 1 "Arduino_Nano_Socket" H 6250 3881 60  0000 C CNN
-F 2 "" H 8050 6500 60  0001 C CNN
-F 3 "https://store.arduino.cc/arduino-nano" H 8050 6500 60  0001 C CNN
-	1    6250 2750
-	1    0    0    -1  
-$EndComp
-$Comp
 L Device:R R2
 U 1 1 5FF567AB
 P 3450 2100
@@ -169,30 +158,6 @@ Wire Wire Line
 	3250 2400 3450 2400
 Wire Wire Line
 	3450 2400 3450 2250
-$Comp
-L power:+5V #PWR018
-U 1 1 5FF58155
-P 10250 700
-F 0 "#PWR018" H 10250 550 50  0001 C CNN
-F 1 "+5V" H 10265 873 50  0000 C CNN
-F 2 "" H 10250 700 50  0001 C CNN
-F 3 "" H 10250 700 50  0001 C CNN
-	1    10250 700 
-	1    0    0    -1  
-$EndComp
-$Comp
-L power:PWR_FLAG #FLG01
-U 1 1 5FF58556
-P 10250 750
-F 0 "#FLG01" H 10250 825 50  0001 C CNN
-F 1 "PWR_FLAG" H 10250 923 50  0000 C CNN
-F 2 "" H 10250 750 50  0001 C CNN
-F 3 "~" H 10250 750 50  0001 C CNN
-	1    10250 750 
-	-1   0    0    1   
-$EndComp
-Wire Wire Line
-	10250 700  10250 750 
 $Comp
 L power:+5V #PWR05
 U 1 1 5FF59AEB
@@ -226,49 +191,25 @@ Wire Wire Line
 	3250 2600 3450 2600
 Wire Wire Line
 	3450 2600 3450 2850
-Text GLabel 7950 1850 2    50   Input ~ 0
+Text GLabel 5350 2050 0    50   Input ~ 0
 Sensor
 Wire Wire Line
-	7550 1850 7950 1850
+	5350 2050 5750 2050
 $Comp
 L power:GND #PWR08
 U 1 1 5FF5DC21
-P 4700 4050
-F 0 "#PWR08" H 4700 3800 50  0001 C CNN
-F 1 "GND" H 4705 3877 50  0000 C CNN
-F 2 "" H 4700 4050 50  0001 C CNN
-F 3 "" H 4700 4050 50  0001 C CNN
-	1    4700 4050
+P 6250 3750
+F 0 "#PWR08" H 6250 3500 50  0001 C CNN
+F 1 "GND" H 6255 3577 50  0000 C CNN
+F 2 "" H 6250 3750 50  0001 C CNN
+F 3 "" H 6250 3750 50  0001 C CNN
+	1    6250 3750
 	1    0    0    -1  
 $EndComp
-Wire Wire Line
-	4700 4050 4700 3350
-Wire Wire Line
-	4700 3250 4950 3250
-Wire Wire Line
-	4950 3350 4700 3350
-Connection ~ 4700 3350
-Wire Wire Line
-	4700 3350 4700 3250
-$Comp
-L power:+5V #PWR07
-U 1 1 5FF5F587
-P 4350 3350
-F 0 "#PWR07" H 4350 3200 50  0001 C CNN
-F 1 "+5V" H 4365 3523 50  0000 C CNN
-F 2 "" H 4350 3350 50  0001 C CNN
-F 3 "" H 4350 3350 50  0001 C CNN
-	1    4350 3350
-	1    0    0    -1  
-$EndComp
-Wire Wire Line
-	4350 3350 4350 3550
-Wire Wire Line
-	4350 3550 4950 3550
-NoConn ~ 4950 3450
-NoConn ~ 4950 3650
-NoConn ~ 7550 3450
-NoConn ~ 7550 3550
+NoConn ~ 5750 2950
+NoConn ~ 5750 3050
+NoConn ~ 6150 1450
+NoConn ~ 5750 3150
 $Comp
 L Connector_Generic:Conn_01x03 J4
 U 1 1 5FF6B4C3
@@ -314,10 +255,10 @@ Wire Wire Line
 	9650 5450 9050 5450
 Text GLabel 9050 5450 0    50   Input ~ 0
 Relay
-Text GLabel 7950 1950 2    50   Input ~ 0
+Text GLabel 5350 2150 0    50   Input ~ 0
 Relay
 Wire Wire Line
-	7550 1950 7950 1950
+	5350 2150 5750 2150
 $Comp
 L Display_Character:WC1602A DS1
 U 1 1 5FF7EAC5
@@ -340,13 +281,13 @@ F 3 "" H 9850 1550 50  0001 C CNN
 	1    9850 1550
 	1    0    0    -1  
 $EndComp
-Text GLabel 7950 2050 2    50   Input ~ 0
+Text GLabel 5350 2250 0    50   Input ~ 0
 LCD_D4
-Text GLabel 7950 2150 2    50   Input ~ 0
+Text GLabel 5350 2350 0    50   Input ~ 0
 LCD_D5
-Text GLabel 7950 2250 2    50   Input ~ 0
+Text GLabel 5350 2450 0    50   Input ~ 0
 LCD_D6
-Text GLabel 7950 2350 2    50   Input ~ 0
+Text GLabel 5350 2550 0    50   Input ~ 0
 LCD_D7
 Text GLabel 9200 3000 0    50   Input ~ 0
 LCD_D4
@@ -357,13 +298,13 @@ LCD_D6
 Text GLabel 9200 3300 0    50   Input ~ 0
 LCD_D7
 Wire Wire Line
-	7550 2050 7950 2050
+	5350 2250 5750 2250
 Wire Wire Line
-	7550 2150 7950 2150
+	5350 2350 5750 2350
 Wire Wire Line
-	7550 2250 7950 2250
+	5350 2450 5750 2450
 Wire Wire Line
-	7550 2350 7950 2350
+	5350 2550 5750 2550
 Wire Wire Line
 	9200 3000 9450 3000
 Wire Wire Line
@@ -372,41 +313,41 @@ Wire Wire Line
 	9200 3200 9450 3200
 Wire Wire Line
 	9200 3300 9450 3300
-Text GLabel 7950 2450 2    50   Input ~ 0
+Text GLabel 5350 2650 0    50   Input ~ 0
 LCD_E
-Text GLabel 7950 2550 2    50   Input ~ 0
+Text GLabel 5350 2750 0    50   Input ~ 0
 LCD_RS
 Wire Wire Line
-	7550 2450 7950 2450
+	5350 2650 5750 2650
 Wire Wire Line
-	7550 2550 7950 2550
-NoConn ~ 4950 1850
-NoConn ~ 4950 1950
-NoConn ~ 4950 2250
-NoConn ~ 4950 2350
-NoConn ~ 4950 2450
-NoConn ~ 4950 2550
-NoConn ~ 4950 3050
-Text GLabel 4650 2650 0    50   Input ~ 0
+	5350 2750 5750 2750
+NoConn ~ 5750 1850
+NoConn ~ 5750 1950
+NoConn ~ 6750 1850
+NoConn ~ 6750 1950
+NoConn ~ 6750 2250
+NoConn ~ 6750 3050
+NoConn ~ 5750 2850
+Text GLabel 7050 2450 2    50   Input ~ 0
 BTN_UP
-Text GLabel 4650 2750 0    50   Input ~ 0
+Text GLabel 7050 2550 2    50   Input ~ 0
 BTN_DWN
-Text GLabel 4650 2850 0    50   Input ~ 0
+Text GLabel 7050 2650 2    50   Input ~ 0
 BTN_LEFT
-Text GLabel 4650 2950 0    50   Input ~ 0
+Text GLabel 7050 2750 2    50   Input ~ 0
 BTN_RIGHT
 Wire Wire Line
-	4650 2650 4950 2650
+	6750 2450 7050 2450
 Wire Wire Line
-	4650 2750 4950 2750
+	6750 2550 7050 2550
 Wire Wire Line
-	4650 2850 4950 2850
+	6750 2650 7050 2650
 Wire Wire Line
-	4650 2950 4950 2950
-NoConn ~ 7550 2650
-NoConn ~ 7550 2750
-NoConn ~ 7550 2850
-NoConn ~ 7550 2950
+	6750 2750 7050 2750
+NoConn ~ 6750 2850
+NoConn ~ 6750 2950
+NoConn ~ 6750 3150
+NoConn ~ 6350 1450
 NoConn ~ 9450 2600
 NoConn ~ 9450 2700
 NoConn ~ 9450 2800
@@ -756,4 +697,37 @@ Wire Wire Line
 	7350 5650 7000 5650
 Wire Wire Line
 	7000 5650 7000 6000
+$Comp
+L MCU_Module:Arduino_Nano_v2.x A1
+U 1 1 6000629A
+P 6250 2450
+F 0 "A1" H 5950 3400 50  0000 C CNN
+F 1 "Arduino_Nano_v2.x" H 6850 3450 50  0000 C CNN
+F 2 "Module:Arduino_Nano" H 6250 2450 50  0001 C CIN
+F 3 "https://www.arduino.cc/en/uploads/Main/ArduinoNanoManual23.pdf" H 6250 2450 50  0001 C CNN
+	1    6250 2450
+	1    0    0    -1  
+$EndComp
+$Comp
+L power:+5V #PWR07
+U 1 1 600486C4
+P 6450 1100
+F 0 "#PWR07" H 6450 950 50  0001 C CNN
+F 1 "+5V" H 6465 1273 50  0000 C CNN
+F 2 "" H 6450 1100 50  0001 C CNN
+F 3 "" H 6450 1100 50  0001 C CNN
+	1    6450 1100
+	1    0    0    -1  
+$EndComp
+Wire Wire Line
+	6450 1100 6450 1450
+Wire Wire Line
+	6250 3750 6250 3600
+Wire Wire Line
+	6250 3600 6350 3600
+Wire Wire Line
+	6350 3600 6350 3450
+Connection ~ 6250 3600
+Wire Wire Line
+	6250 3600 6250 3450
 $EndSCHEMATC
