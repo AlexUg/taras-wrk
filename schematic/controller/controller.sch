@@ -313,9 +313,9 @@ Wire Wire Line
 	9200 3200 9450 3200
 Wire Wire Line
 	9200 3300 9450 3300
-Text GLabel 5350 2650 0    50   Input ~ 0
-LCD_E
 Text GLabel 5350 2750 0    50   Input ~ 0
+LCD_E
+Text GLabel 5350 2650 0    50   Input ~ 0
 LCD_RS
 Wire Wire Line
 	5350 2650 5750 2650
@@ -328,11 +328,11 @@ NoConn ~ 6750 1950
 NoConn ~ 6750 2250
 NoConn ~ 6750 3050
 NoConn ~ 5750 2850
-Text GLabel 7050 2450 2    50   Input ~ 0
-BTN_UP
 Text GLabel 7050 2550 2    50   Input ~ 0
-BTN_DWN
+BTN_UP
 Text GLabel 7050 2650 2    50   Input ~ 0
+BTN_DWN
+Text GLabel 7050 2450 2    50   Input ~ 0
 BTN_LEFT
 Text GLabel 7050 2750 2    50   Input ~ 0
 BTN_RIGHT

@@ -36,6 +36,7 @@
 **/*_bak
 **/*-bak
 **/*.log
+**/_autosave-*
 
 #FreeCAD files
 3dmodels/**/*.obj
@@ -43,4 +44,5 @@
 
 # Eclipse Sloeber settings
 **/.settings/*
-
+**/sloeber.ino.cpp
+cppsources/Controller/Release/*
