@@ -328,13 +328,13 @@ NoConn ~ 6750 1950
 NoConn ~ 6750 2250
 NoConn ~ 6750 3050
 NoConn ~ 5750 2850
-Text GLabel 7050 2550 2    50   Input ~ 0
-BTN_UP
 Text GLabel 7050 2650 2    50   Input ~ 0
+BTN_UP
+Text GLabel 7050 2550 2    50   Input ~ 0
 BTN_DWN
-Text GLabel 7050 2450 2    50   Input ~ 0
-BTN_LEFT
 Text GLabel 7050 2750 2    50   Input ~ 0
+BTN_LEFT
+Text GLabel 7050 2450 2    50   Input ~ 0
 BTN_RIGHT
 Wire Wire Line
 	6750 2450 7050 2450
