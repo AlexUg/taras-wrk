@@ -1,8 +1,8 @@
 #include "Arduino.h"
 
-#define DEFAULT_TOTALTIME	5
-#define DEFAULT_DETECTTIME	3
-#define DEFAULT_RELAYTIME	20
+#define DEFAULT_TOTAL_TIME	5		// в секундах
+#define DEFAULT_DETECT_TIME	3		// в секундах
+#define DEFAULT_RELAY_TIME	40		// в десятках миллисекунд 40 -> 400 миллисекунд
 
 #define SENSOR	2
 #define RELAY	3
@@ -47,7 +47,7 @@ struct Config {
 	// Секунды от 1 до 254.
 	uint8_t detectTime;
 
-	// Время срабатывания реле.
+	// Время срабатывания реле. Период включения-выключения будет relayTime * 2.
 	// Десятки миллисекунд от 1 до 254.
 	uint8_t relayTime;
 };
@@ -71,7 +71,7 @@ uint8_t getTotalTime() {
 	uint8_t result = eeprom_read_byte(&eeConfig.totalTime);
 	if ((result == 0)
 			|| (result == 0xFF)) {
-		result = DEFAULT_TOTALTIME;
+		result = DEFAULT_TOTAL_TIME;
 	}
 	return result;
 }
@@ -84,7 +84,7 @@ uint8_t getDetectTime() {
 	uint8_t result = eeprom_read_byte(&eeConfig.detectTime);
 	if ((result == 0)
 			|| (result == 0xFF)) {
-		result = DEFAULT_DETECTTIME;
+		result = DEFAULT_DETECT_TIME;
 	}
 	return result;
 }
@@ -97,7 +97,7 @@ uint8_t getRelayTime() {
 	uint8_t result = eeprom_read_byte(&eeConfig.relayTime);
 	if ((result == 0)
 			|| (result == 0xFF)) {
-		result = DEFAULT_RELAYTIME;
+		result = DEFAULT_RELAY_TIME;
 	}
 	return result;
 }
@@ -136,6 +136,7 @@ uint8_t timeInterval() {
 void stateInit() {
 	if (SENSOR_STATE::INIT != sensorState) {
 		sensorState = SENSOR_STATE::INIT;
+		switchStateTime = millis();
 #ifdef USE_LCD
 		lcd.clear();
 		lcd.setCursor(0, 0);
@@ -154,6 +155,7 @@ void stateSensorOff() {
 	relayDeactivate();
 	if (SENSOR_STATE::SENSOR_OFF != sensorState) {
 		sensorState = SENSOR_STATE::SENSOR_OFF;
+		switchStateTime = millis();
 #ifdef USE_LCD
 		lcd.clear();
 		lcd.setCursor(0, 0);
@@ -165,23 +167,35 @@ void stateSensorOff() {
 
 void stateSensorOn() {
 	relayDeactivate();
+	uint8_t ti = timeInterval();
 	if (SENSOR_STATE::SENSOR_ON != sensorState) {
 		sensorState = SENSOR_STATE::SENSOR_ON;
+		switchStateTime = millis();
 #ifdef USE_LCD
 		lcd.clear();
 		lcd.setCursor(0, 0);
 		lcd.print(F("Sensor ON"));
 #endif
 		Serial.println(F("Sensor ON"));
-	} else if (timeInterval() >= getDetectTime()) {
+	} else if (ti >= getDetectTime()) {
 		stateFunc = stateSensorOnDetected;
+	} else {
+#ifdef USE_LCD
+		lcd.setCursor(10, 0);
+		lcd.print(ti, 10);
+		lcd.print(F(" s  "));
+#endif
+		Serial.print(ti, 10);
+		Serial.println(F("sec"));
 	}
 }
 
 void stateSensorOnDetected() {
+	uint8_t ti = timeInterval();
 	if (SENSOR_STATE::SENSOR_ON_DETECTED != sensorState) {
 		sensorState = SENSOR_STATE::SENSOR_ON_DETECTED;
-//		relayActivate();
+		switchStateTime = millis();
+		relayActivate();
 #ifdef USE_LCD
 		lcd.clear();
 		lcd.setCursor(0, 0);
@@ -190,8 +204,16 @@ void stateSensorOnDetected() {
 		lcd.print(F("Plate detected"));
 #endif
 		Serial.println(F("Plate detected"));
-	} else if (timeInterval() >= getTotalTime()) {
+	} else if (ti >= (getTotalTime() - getDetectTime())) {
 		stateFunc = stateSensorOnTotal;
+	} else {
+#ifdef USE_LCD
+		lcd.setCursor(10, 0);
+		lcd.print(ti, 10);
+		lcd.print(F(" s  "));
+#endif
+		Serial.print(ti, 10);
+		Serial.println(F("sec"));
 	}
 }
 
@@ -199,6 +221,7 @@ void stateSensorOnTotal() {
 	relayDeactivate();
 	if (SENSOR_STATE::SENSOR_ON_TOTAL != sensorState) {
 		sensorState = SENSOR_STATE::SENSOR_ON_TOTAL;
+		switchStateTime = millis();
 		lcd.clear();
 #ifdef USE_LCD
 		lcd.setCursor(0, 0);
@@ -246,6 +269,7 @@ void setup() {
 	attachInterrupt(digitalPinToInterrupt(SENSOR), sensorInterrupt, CHANGE);
 
 	switchStateTime = millis();
+
 }
 
 
@@ -267,7 +291,6 @@ void sensorInterrupt() {
 		} else {
 			stateFunc = stateSensorOff;
 		}
-		switchStateTime = millis();
 	}
 }
 
@@ -289,18 +312,22 @@ void relayOff() {
 }
 
 void relayActivate() {
-	relayOn();
+
+	uint16_t period = getRelayTime() * 2 * 10 * 8;
+
+	TCNT1 = 0;
 
 	TCCR1A = (1 << WGM11) | (1 << WGM10);
 	TCCR1B = (1 << WGM13) | (1 << WGM12)
-				| (1 << CS12);	// Timer1 prescaller = 256
+				| (1 << CS12) | (1 << CS10);	// Timer1 prescaller = 1024
 
-	uint16_t period = (getRelayTime() * 10) / 16;
 	OCR1A = period;
 	OCR1B = period / 2;
 
 	TIFR1 = (1 << OCF1B) | (1 << OCF1A) | (1 << TOV1);
 	TIMSK1 = (1 << OCIE1B) | (1 << TOIE1);
+
+	relayOn();
 }
 
 void relayDeactivate() {
@@ -313,7 +340,7 @@ void relayDeactivate() {
 }
 
 
-ISR(TIMER1_COMPA_vect) {
+ISR(TIMER1_COMPB_vect) {
 	relayOff();
 }
 
