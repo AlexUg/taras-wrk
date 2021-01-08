@@ -1,11 +1,12 @@
 #include "Arduino.h"
 
+// Необходимо заккоментировать, если не будут
+// использоваться LCD-дисплей с кнопками управления
+#define USE_LCD
+
 #define DEFAULT_TOTAL_TIME	5		// в секундах
 #define DEFAULT_DETECT_TIME	3		// в секундах
 #define DEFAULT_RELAY_TIME	40		// в десятках миллисекунд 40 -> 400 миллисекунд
-
-#define SENSOR	2
-#define RELAY	3
 
 // Если сенсор при наличии листа выдаёт низкий уровень, то значение 1.
 // Если -- высокий, то значение 0.
@@ -15,8 +16,11 @@
 // Если -- высоким, то значение 0.
 #define RELAY_ACTIVE_LOW	1
 
-#define USE_LCD
+// Выводы модуля Arduino для подключения сенсора и реле
+#define SENSOR	2
+#define RELAY	3
 
+// Выводы модуля Arduino для подключения кнопок управлдения
 #define BUTTON_UP		A0
 #define BUTTON_DOWN		A1
 #define BUTTON_LEFT		A2
@@ -33,7 +37,7 @@ LiquidCrystal lcd( 8, 9, 4, 5, 6, 7);
 
 
 // Структура, содержащая конфигурацию устройства.
-// Любое отрицательное значение параметра говорит о том,
+// Значение параметра равное 0 или 0xFF говорит о том,
 // что параметр не задан.
 struct Config {
 	// Обход дефекта, связанного с нулевой ячейкой EEPROM.
@@ -50,6 +54,21 @@ struct Config {
 	// Время срабатывания реле. Период включения-выключения будет relayTime * 2.
 	// Десятки миллисекунд от 1 до 254.
 	uint8_t relayTime;
+
+	struct {
+		// Если сенсор при наличии листа выдаёт низкий уровень, то значение 1.
+		// Если -- высокий, то значение 0.
+		uint8_t sensorActiveLow : 1;
+
+		// Если реле включается низким уровнем, то значение 1.
+		// Если -- высоким, то значение 0.
+		uint8_t relayActiveLow : 1;
+
+		// Бит статуса.
+		// Если 0, то флаги заданы.
+		// Если 1, то -- нет.
+		uint8_t status : 1;
+	} flags;
 };
 
 enum class SENSOR_STATE : uint8_t {
@@ -63,12 +82,20 @@ enum class SENSOR_STATE : uint8_t {
 };
 
 
-// +++++++++++++++++++++ EEPROM configuration +++++++++++++++++++++
+// +++++++++++++++++++++ Controller onfiguration +++++++++++++++++++++
 
-struct Config eeConfig EEMEM = { 0xFF, 0xFF, 0xFF, 0xFF };
+// Конфигурация, хранимая в EEPROM.
+struct Config eeConfig EEMEM = { 0xFF, 0xFF, 0xFF, 0xFF, { 1, 1, 1 } };
+
+// Копия конфигурации в ОЗУ.
+struct Config config;
+
+static inline void loadConfiguration() {
+	eeprom_read_block(&config, &eeConfig, sizeof(Config));
+}
 
 uint8_t getTotalTime() {
-	uint8_t result = eeprom_read_byte(&eeConfig.totalTime);
+	uint8_t result = config.totalTime;
 	if ((result == 0)
 			|| (result == 0xFF)) {
 		result = DEFAULT_TOTAL_TIME;
@@ -77,11 +104,12 @@ uint8_t getTotalTime() {
 }
 
 void setTotalTime(uint8_t value) {
+	config.totalTime = value;
 	eeprom_update_byte(&eeConfig.totalTime, value);
 }
 
 uint8_t getDetectTime() {
-	uint8_t result = eeprom_read_byte(&eeConfig.detectTime);
+	uint8_t result = config.detectTime;
 	if ((result == 0)
 			|| (result == 0xFF)) {
 		result = DEFAULT_DETECT_TIME;
@@ -90,11 +118,12 @@ uint8_t getDetectTime() {
 }
 
 void setDetectTime(uint8_t value) {
+	config.detectTime = value;
 	eeprom_update_byte(&eeConfig.detectTime, value);
 }
 
 uint8_t getRelayTime() {
-	uint8_t result = eeprom_read_byte(&eeConfig.relayTime);
+	uint8_t result = config.relayTime;
 	if ((result == 0)
 			|| (result == 0xFF)) {
 		result = DEFAULT_RELAY_TIME;
@@ -103,10 +132,39 @@ uint8_t getRelayTime() {
 }
 
 void setRelayTime(uint8_t value) {
+	config.relayTime = value;
 	eeprom_update_byte(&eeConfig.relayTime, value);
 }
 
-// --------------------- EEPROM configuration ---------------------
+uint8_t getSensorActiveLow() {
+	if (config.flags.status > 0) {
+		return SENSOR_ACTIVE_LOW;
+	} else {
+		return config.flags.sensorActiveLow;
+	}
+}
+
+void setSensorActiveLow(uint8_t value) {
+	config.flags.status = 1;
+	config.flags.sensorActiveLow = value;
+	eeprom_update_block(&config.flags, &eeConfig.flags, sizeof(uint8_t));
+}
+
+uint8_t getRelayActiveLow() {
+	if (config.flags.status > 0) {
+		return RELAY_ACTIVE_LOW;
+	} else {
+		return config.flags.relayActiveLow;
+	}
+}
+
+void setRelayActiveLow(uint8_t value) {
+	config.flags.status = 1;
+	config.flags.relayActiveLow = value;
+	eeprom_update_block(&config.flags, &eeConfig.flags, sizeof(uint8_t));
+}
+
+// --------------------- Controller configuration ---------------------
 
 
 // +++++++++++++++++++++ StateMachine Functions +++++++++++++++++++
@@ -116,6 +174,7 @@ volatile SENSOR_STATE sensorState;
 
 // Время переключения состояния (миллисекунды от старта МК)
 volatile unsigned long switchStateTime;
+
 
 void (*stateFunc) ();
 
@@ -241,21 +300,23 @@ void setup() {
 	sensorState = SENSOR_STATE::NONE;
 	stateFunc = stateInit;
 
+	loadConfiguration();
+
 	Serial.begin(9600);
 
-#if RELAY_ACTIVE_LOW == 1
-	digitalWrite(RELAY, HIGH);
-#else
-	digitalWrite(RELAY, LOW);
-#endif
+	if (getRelayActiveLow()) {
+		digitalWrite(RELAY, HIGH);
+	} else {
+		digitalWrite(RELAY, LOW);
+	}
 	pinMode(RELAY, OUTPUT);
 	relayDeactivate();
 
-#if SENSOR_ACTIVE_LOW == 1
-	pinMode(SENSOR, INPUT_PULLUP);
-#else
-	pinMode(SENSOR, INPUT);
-#endif
+	if (getSensorActiveLow()) {
+		pinMode(SENSOR, INPUT_PULLUP);
+	} else {
+		pinMode(SENSOR, INPUT);
+	}
 
 #ifdef USE_LCD
 	pinMode(BUTTON_UP, INPUT_PULLUP);
@@ -281,9 +342,9 @@ void loop() {
 void sensorInterrupt() {
 	uint8_t pinState = digitalRead(SENSOR) & 1;
 
-#if SENSOR_ACTIVE_LOW == 1
-	pinState = (pinState + 1) & 1;
-#endif
+	if (getSensorActiveLow()) {
+		pinState = (pinState + 1) & 1;
+	}
 
 	if (sensorState < SENSOR_STATE::CONFIGURE) {
 		if (pinState) {
@@ -296,19 +357,19 @@ void sensorInterrupt() {
 
 
 void relayOn() {
-#if RELAY_ACTIVE_LOW == 1
-	digitalWrite(RELAY, LOW);
-#else
-	digitalWrite(RELAY, HIGH);
-#endif
+	if (getRelayActiveLow()) {
+		digitalWrite(RELAY, LOW);
+	} else {
+		digitalWrite(RELAY, HIGH);
+	}
 }
 
 void relayOff() {
-#if RELAY_ACTIVE_LOW == 1
-	digitalWrite(RELAY, HIGH);
-#else
-	digitalWrite(RELAY, LOW);
-#endif
+	if (getRelayActiveLow()) {
+		digitalWrite(RELAY, HIGH);
+	} else {
+		digitalWrite(RELAY, LOW);
+	}
 }
 
 void relayActivate() {
