@@ -17,6 +17,9 @@
 // Если -- высоким, то значение 0.
 #define RELAY_ACTIVE_LOW	1
 
+#define SERIAL_TIMEOUT		5			// в секундах
+#define SERIAL_CTL_BUFFER	128
+
 // Выводы модуля Arduino для подключения сенсора и реле
 #define SENSOR	2
 #define RELAY	3
@@ -169,7 +172,7 @@ uint8_t getSensorActiveLow() {
 }
 
 void setSensorActiveLow(uint8_t value) {
-	config.flags.status = 1;
+	config.flags.status = 0;
 	config.flags.sensorActiveLow = value;
 	eeprom_update_block(&config.flags, &eeConfig.flags, sizeof(uint8_t));
 }
@@ -183,7 +186,7 @@ uint8_t getRelayActiveLow() {
 }
 
 void setRelayActiveLow(uint8_t value) {
-	config.flags.status = 1;
+	config.flags.status = 0;
 	config.flags.relayActiveLow = value;
 	eeprom_update_block(&config.flags, &eeConfig.flags, sizeof(uint8_t));
 }
@@ -231,28 +234,11 @@ ISR(PCINT1_vect) {
 	if (changes) {
 		if ((changes != lastChanges)
 				|| ((millis() - lastButtonsChange) > BOUNCING_DELAY)) {
-
-			Serial.print(F("nb:"));
-			Serial.println(newButtonsState, 16);
-			Serial.print(F("f:"));
-			Serial.println((uint16_t) onButtonPressed, 16);
-
 			for (uint8_t bit = 1; bit < 0x10; bit <<= 1) {
-
-				Serial.print(F("i:"));
-				Serial.println(bit, 16);
-
 				if ((changes & bit)
 						&& (newButtonsState & bit)
 						&& onButtonPressed) {
-
-					Serial.println(F("on"));
-
 					onButtonPressed(bit);
-				} else {
-
-					Serial.println(F("off"));
-
 				}
 			}
 		}
@@ -634,6 +620,125 @@ void defaultButtonPressed(uint8_t button) {
 
 // --------------------- StateMachine Functions -------------------
 
+// +++++++++++++++++++++ Serial Functions +++++++++++++++++++++++++
+
+uint16_t ctlBufferIndex;
+uint16_t splitIndex;
+char ctlBuffer[SERIAL_CTL_BUFFER];
+unsigned long lastSerialTime;
+
+void initSerialCtl() {
+	ctlBufferIndex = 0;
+	lastSerialTime = 0;
+	Serial.begin(9600);
+}
+
+void processSerial() {
+	unsigned long delta = millis() - lastSerialTime;
+	if ((delta / 1000) > SERIAL_TIMEOUT) {
+		ctlBufferIndex = 0;
+		splitIndex = 0;
+	}
+	while (Serial.available()) {
+		lastSerialTime = millis();
+		uint8_t ch = Serial.read();
+		if (((ch >= 'a') && (ch <= 'z'))
+				|| ((ch >= 'A') && (ch <= 'Z'))
+				|| ((ch >= '0') && (ch <= '9'))
+				|| (ch == '?')) {
+			ctlBuffer[ctlBufferIndex] = ch;
+			ctlBufferIndex++;
+			if (ctlBufferIndex == SERIAL_CTL_BUFFER) {
+				ctlBufferIndex = 0;
+				splitIndex = 0;
+			}
+		} else if (ch == ' ') {
+		} else if (ch == '=') {
+			ctlBuffer[ctlBufferIndex] = 0;
+			splitIndex = ctlBufferIndex;
+			ctlBufferIndex++;
+		} else if ((ch == '\r')
+					|| (ch == '\n')) {
+			ctlBuffer[ctlBufferIndex] = 0;
+			if ((splitIndex > 0)
+					&& (splitIndex < ctlBufferIndex)) {
+				processKeyValuePair(ctlBuffer, ctlBuffer + splitIndex + 1);
+			}
+			ctlBufferIndex = 0;
+			splitIndex = 0;
+		} else {
+			ctlBufferIndex = 0;
+			splitIndex = 0;
+		}
+	}
+}
+
+void processKeyValuePair(const char *key, const char *value) {
+	if (strcmp_P(key, PSTR("total")) == 0) {
+		if (value[0] != '?') {
+			uint8_t iVal = atoi(value);
+			setTotalTime(iVal);
+		}
+		Serial.print(F("total time: "));
+		Serial.print(getTotalTime());
+		Serial.println(F(" sec"));
+	} else if (strcmp_P(key, PSTR("detect")) == 0) {
+		if (value[0] != '?') {
+			uint8_t iVal = atoi(value);
+			setDetectTime(iVal);
+		}
+		Serial.print(F("detect time: "));
+		Serial.print(getDetectTime());
+		Serial.println(F(" sec"));
+	} else if (strcmp_P(key, PSTR("relay")) == 0) {
+		if (value[0] != '?') {
+			uint16_t iVal = atoi(value);
+			setRelayTime(iVal / 10);
+		}
+		Serial.print(F("relay time: "));
+		Serial.print(getRelayTime() * 10);
+		Serial.println(F(" ms"));
+	} else if (strcmp_P(key, PSTR("buttons")) == 0) {
+		if (value[0] != '?') {
+			uint8_t iVal = atoi(value);
+			setButtonsTime(iVal);
+		}
+		Serial.print(F("buttons time: "));
+		Serial.print(getButtonsTime());
+		Serial.println(F(" sec"));
+	} else if (strcmp_P(key, PSTR("sensorLevel")) == 0) {
+		if (value[0] != '?') {
+			if (strcmp_P(value, PSTR("low")) == 0) {
+				setSensorActiveLow(1);
+			} else if (strcmp_P(value, PSTR("high")) == 0) {
+				setSensorActiveLow(0);
+			}
+		}
+		Serial.print(F("sensor level: "));
+		if (getSensorActiveLow()) {
+			Serial.println(F("LOW"));
+		} else {
+			Serial.println(F("HIGH"));
+		}
+	} else if (strcmp_P(key, PSTR("relayLevel")) == 0) {
+		if (value[0] != '?') {
+			if (strcmp_P(value, PSTR("low")) == 0) {
+				setRelayActiveLow(1);
+			} else if (strcmp_P(value, PSTR("high")) == 0) {
+				setRelayActiveLow(0);
+			}
+		}
+		Serial.print(F("relay level: "));
+		if (getRelayActiveLow()) {
+			Serial.println(F("LOW"));
+		} else {
+			Serial.println(F("HIGH"));
+		}
+	}
+}
+
+// --------------------- Serial Functions -------------------------
+
 
 void setup() {
 
@@ -642,7 +747,7 @@ void setup() {
 
 	loadConfiguration();
 
-	Serial.begin(9600);
+	initSerialCtl();
 
 	if (getRelayActiveLow()) {
 		digitalWrite(RELAY, HIGH);
@@ -673,6 +778,7 @@ void setup() {
 
 void loop() {
 	stateFunc();
+	processSerial();
 }
 
 
