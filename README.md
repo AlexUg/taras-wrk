@@ -128,4 +128,5 @@ LOW
 
 ### relayLevel
 `relayLevel = ?` -- узнать текущее значение параметра 'Relay Level'.
+
 `relayLevel = <low или high>` -- задать значение параметра 'Relay Level', например `relayLevel = high`. 
