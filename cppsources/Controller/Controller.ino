@@ -4,9 +4,10 @@
 // использоваться LCD-дисплей с кнопками управления
 #define USE_LCD
 
-#define DEFAULT_TOTAL_TIME	5		// в секундах
-#define DEFAULT_DETECT_TIME	3		// в секундах
-#define DEFAULT_RELAY_TIME	40		// в десятках миллисекунд 40 -> 400 миллисекунд
+#define DEFAULT_TOTAL_TIME		5		// в секундах
+#define DEFAULT_DETECT_TIME		3		// в секундах
+#define DEFAULT_RELAY_TIME		40		// в десятках миллисекунд 40 -> 400 миллисекунд
+#define DEFAULT_BUTTONS_TIME	20		// в секундах
 
 // Если сенсор при наличии листа выдаёт низкий уровень, то значение 1.
 // Если -- высокий, то значение 0.
@@ -21,10 +22,22 @@
 #define RELAY	3
 
 // Выводы модуля Arduino для подключения кнопок управлдения
-#define BUTTON_UP		A0
-#define BUTTON_DOWN		A1
-#define BUTTON_LEFT		A2
-#define BUTTON_RIGHT	A3
+// ВНИМАНИЕ!!!! Если нужно изменить значения,
+//              то необходимо переработать код в секции 'LCD/Keyboard Functions'.
+#define BUTTON_RIGHT_PIN	A0
+#define BUTTON_DOWN_PIN		A1
+#define BUTTON_UP_PIN		A2
+#define BUTTON_LEFT_PIN		A3
+
+// Коды кнопок.
+// Точнее биты.
+// ВНИМАНИЕ!!!! Если нужно изменить значения,
+//              то необходимо переработать код в секции 'LCD/Keyboard Functions'.
+//              В частности, обработчик прерывания.
+#define BUTTON_RIGHT_NUMBER		1
+#define BUTTON_DOWN_NUMBER		2
+#define BUTTON_UP_NUMBER		4
+#define BUTTON_LEFT_NUMBER		8
 
 
 #include <avr/eeprom.h>
@@ -55,6 +68,13 @@ struct Config {
 	// Десятки миллисекунд от 1 до 254.
 	uint8_t relayTime;
 
+	// Время ожидания нажатия кнопок до выхода из меню конфигурации.
+	// Если контроллер находится в режиме конфигурирования
+	// и в течении заданного времени не нажимаются кнопки,
+	// то контроллер выходит из режима конфигурирования.
+	// Секунды от 1 до 254.
+	uint8_t buttonsTime;
+
 	struct {
 		// Если сенсор при наличии листа выдаёт низкий уровень, то значение 1.
 		// Если -- высокий, то значение 0.
@@ -71,21 +91,11 @@ struct Config {
 	} flags;
 };
 
-enum class SENSOR_STATE : uint8_t {
-	INIT,					// начальное состаяние
-	SENSOR_OFF,				// листа нет под сенсором
-	SENSOR_ON,				// сенсор определил наличие листа
-	SENSOR_ON_DETECTED,		// лист находится по сенсором время равное detectTime
-	SENSOR_ON_TOTAL,		// лист находится по сенсором время равное totalTime
-	CONFIGURE,				// производится настройка контроллера, сенсор не проверятеся
-	NONE
-};
 
-
-// +++++++++++++++++++++ Controller onfiguration +++++++++++++++++++++
+// +++++++++++++++++++++ Controller configuration +++++++++++++++++++++
 
 // Конфигурация, хранимая в EEPROM.
-struct Config eeConfig EEMEM = { 0xFF, 0xFF, 0xFF, 0xFF, { 1, 1, 1 } };
+struct Config eeConfig EEMEM = { 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, { 1, 1, 1 } };
 
 // Копия конфигурации в ОЗУ.
 struct Config config;
@@ -136,6 +146,20 @@ void setRelayTime(uint8_t value) {
 	eeprom_update_byte(&eeConfig.relayTime, value);
 }
 
+uint8_t getButtonsTime() {
+	uint8_t result = config.buttonsTime;
+	if ((result == 0)
+			|| (result == 0xFF)) {
+		result = DEFAULT_BUTTONS_TIME;
+	}
+	return result;
+}
+
+void setButtonsTime(uint8_t value) {
+	config.buttonsTime = value;
+	eeprom_update_byte(&eeConfig.buttonsTime, value);
+}
+
 uint8_t getSensorActiveLow() {
 	if (config.flags.status > 0) {
 		return SENSOR_ACTIVE_LOW;
@@ -167,7 +191,100 @@ void setRelayActiveLow(uint8_t value) {
 // --------------------- Controller configuration ---------------------
 
 
+// +++++++++++++++++++++ LCD/Keyboard Functions +++++++++++++++++++
+
+// Задержка для подавления дребезга кнопок.
+#define BOUNCING_DELAY	100		// in milliseconds
+
+volatile uint8_t buttonsState;
+volatile uint8_t lastChanges;
+volatile unsigned long lastButtonsChange;
+
+void (*onButtonPressed) (uint8_t button);
+
+void defaultButtonPressed(uint8_t button);
+
+void initButtons() {
+
+	pinMode(BUTTON_UP_PIN, INPUT_PULLUP);
+	pinMode(BUTTON_DOWN_PIN, INPUT_PULLUP);
+	pinMode(BUTTON_LEFT_PIN, INPUT_PULLUP);
+	pinMode(BUTTON_RIGHT_PIN, INPUT_PULLUP);
+
+	buttonsState = PINC;
+	lastChanges = 0;
+	lastButtonsChange = 0;
+
+	PCIFR = (1 << PCIF0) | (1 << PCIF1) | (1 << PCIF2);
+	PCMSK1 =	(1 << PCINT8)		// Вывод A0 -- BUTTON_UP
+				| (1 << PCINT9)		// Вывод A1 -- BUTTON_DOWN
+				| (1 << PCINT10)	// Вывод A2 -- BUTTON_LEFT
+				| (1 << PCINT11)	// Вывод A3 -- BUTTON_RIGHT
+				;
+	PCICR = (1 << PCIE1);	// Активация обработчика прерывания PCINT1_vect,
+							// который "смотрит" за портом PINC (выводы A0 .. A5)
+}
+
+ISR(PCINT1_vect) {
+	uint8_t newButtonsState = PINC;
+	uint8_t changes = newButtonsState ^ buttonsState;
+	if (changes) {
+		if ((changes != lastChanges)
+				|| ((millis() - lastButtonsChange) > BOUNCING_DELAY)) {
+
+			Serial.print(F("nb:"));
+			Serial.println(newButtonsState, 16);
+			Serial.print(F("f:"));
+			Serial.println((uint16_t) onButtonPressed, 16);
+
+			for (uint8_t bit = 1; bit < 0x10; bit <<= 1) {
+
+				Serial.print(F("i:"));
+				Serial.println(bit, 16);
+
+				if ((changes & bit)
+						&& (newButtonsState & bit)
+						&& onButtonPressed) {
+
+					Serial.println(F("on"));
+
+					onButtonPressed(bit);
+				} else {
+
+					Serial.println(F("off"));
+
+				}
+			}
+		}
+		lastButtonsChange = millis();
+		lastChanges = changes;
+		buttonsState = newButtonsState;
+	}
+}
+
+// --------------------- LCD/Keyboard Functions -------------------
+
+
 // +++++++++++++++++++++ StateMachine Functions +++++++++++++++++++
+
+
+enum class SENSOR_STATE : uint8_t {
+	INIT,					// начальное состаяние
+	SENSOR_OFF,				// листа нет под сенсором
+	SENSOR_ON,				// сенсор определил наличие листа
+	SENSOR_ON_DETECTED,		// лист находится по сенсором время равное detectTime
+	SENSOR_ON_TOTAL,		// лист находится по сенсором время равное totalTime
+	CONFIGURE,				// производится настройка контроллера, сенсор не проверятеся
+#ifdef USE_LCD
+	CONFIGURE_TOTAL_TIME,	// производится настройка контроллера, сенсор не проверятеся
+	CONFIGURE_DETECT_TIME,	// производится настройка контроллера, сенсор не проверятеся
+	CONFIGURE_RELAY_TIME,	// производится настройка контроллера, сенсор не проверятеся
+	CONFIGURE_BUTTONS_TIME,	// производится настройка контроллера, сенсор не проверятеся
+	CONFIGURE_SENSOR_LEVEL,	// производится настройка контроллера, сенсор не проверятеся
+	CONFIGURE_RELAY_LEVEL,	// производится настройка контроллера, сенсор не проверятеся
+#endif
+	NONE
+};
 
 // Новое состояние
 volatile SENSOR_STATE sensorState;
@@ -183,6 +300,12 @@ void stateSensorOff();
 void stateSensorOn();
 void stateSensorOnDetected();
 void stateSensorOnTotal();
+void stateConfigureDetectTime();
+void stateConfigureTotalTime();
+void stateConfigureRelayTime();
+void stateConfigureButtonsTime();
+void stateConfigureSensorLevel();
+void stateConfigureRelayLevel();
 
 
 // Возвращяет время прошедшее с последнего переключения состояния.
@@ -197,17 +320,19 @@ void stateInit() {
 		sensorState = SENSOR_STATE::INIT;
 		switchStateTime = millis();
 #ifdef USE_LCD
+		lcd.noBlink();
 		lcd.clear();
 		lcd.setCursor(0, 0);
 		lcd.print(F("Controller"));
 		lcd.setCursor(0, 1);
-		lcd.print(F("v 0.1"));
+		lcd.print(F("v0.1"));
 #endif
-		Serial.println(F("Controller"));
-		Serial.println(F("v 0.1"));
+		Serial.println(F("Controller v0.1"));
 	} else if (timeInterval() >= getTotalTime()) {
 		stateFunc = stateSensorOff;
 	}
+
+	onButtonPressed = defaultButtonPressed;
 }
 
 void stateSensorOff() {
@@ -292,6 +417,221 @@ void stateSensorOnTotal() {
 	}
 }
 
+#ifdef USE_LCD
+
+void printSeconds(uint8_t value) {
+	lcd.setCursor(0, 1);
+	lcd.print(value, 10);
+	lcd.print(F(" sec    "));
+	lcd.setCursor(0, 1);
+	lcd.blink();
+}
+
+void printMillis(uint8_t value) {
+	lcd.setCursor(0, 1);
+	lcd.print(value, 10);
+	lcd.print(F("0 ms    "));
+	lcd.setCursor(0, 1);
+	lcd.blink();
+}
+
+void printLevel(uint8_t value) {
+	lcd.setCursor(0, 1);
+	if (value) {
+		lcd.print(F("LOW   "));
+	} else {
+		lcd.print(F("HIGH   "));
+	}
+	lcd.setCursor(0, 1);
+	lcd.blink();
+}
+
+volatile uint8_t tempValue;
+void (*nextStateFunc) ();
+void (*printValueFunc) (uint8_t value);
+void (*setTimeFunc) (uint8_t value);
+void (*setLevelFunc) (uint8_t value);
+
+
+volatile unsigned long configTime;
+
+uint8_t checkConfigTimeout() {
+	relayDeactivate();
+	unsigned long delta = millis() - configTime;
+	if ((delta / 1000) > getButtonsTime()) {
+		stateFunc = stateInit;
+		return 0;
+	} else {
+		return 1;
+	}
+}
+
+void configureTimePressed(uint8_t button) {
+	configTime = millis();
+	if (button & BUTTON_UP_NUMBER) {			// увеличение значения
+		tempValue++;
+		if (tempValue == 0xFF) {
+			tempValue = 1;
+		}
+		printValueFunc(tempValue);
+	} else if (button & BUTTON_DOWN_NUMBER) {	// уменьшение значения
+		tempValue--;
+		if (tempValue == 0) {
+			tempValue = 0xFE;
+		}
+		printValueFunc(tempValue);
+	} else if (button & BUTTON_LEFT_NUMBER) {	// сохранение значения
+		if (setTimeFunc) {
+			setTimeFunc(tempValue);
+		}
+		stateFunc = nextStateFunc;
+	} else if (button & BUTTON_RIGHT_NUMBER) {	// отмена изменения
+		stateFunc = nextStateFunc;
+	}
+}
+
+void configureLevelPressed(uint8_t button) {
+	configTime = millis();
+	if (button & BUTTON_UP_NUMBER) {			// увеличение значения
+		tempValue = (tempValue + 1) & 1;
+		printValueFunc(tempValue);
+	} else if (button & BUTTON_DOWN_NUMBER) {	// уменьшение значения
+		tempValue = (tempValue - 1) & 1;
+		printValueFunc(tempValue);
+	} else if (button & BUTTON_LEFT_NUMBER) {	// сохранение значения
+		if (setTimeFunc) {
+			setTimeFunc(tempValue);
+		}
+		stateFunc = nextStateFunc;
+	} else if (button & BUTTON_RIGHT_NUMBER) {	// отмена изменения
+		stateFunc = nextStateFunc;
+	}
+}
+
+void stateConfigureTotalTime() {
+	if (checkConfigTimeout()) {
+		if (SENSOR_STATE::CONFIGURE_TOTAL_TIME != sensorState) {
+			sensorState = SENSOR_STATE::CONFIGURE_TOTAL_TIME;
+			tempValue = getTotalTime();
+			lcd.clear();
+			lcd.setCursor(0, 0);
+			lcd.print(F("Total time:"));
+
+			setTimeFunc = setTotalTime;
+			printValueFunc = printSeconds;
+			onButtonPressed = configureTimePressed;
+			nextStateFunc = stateConfigureDetectTime;
+
+			printValueFunc(tempValue);
+		}
+	}
+}
+
+void stateConfigureDetectTime() {
+	if (checkConfigTimeout()) {
+		if (SENSOR_STATE::CONFIGURE_DETECT_TIME != sensorState) {
+			sensorState = SENSOR_STATE::CONFIGURE_DETECT_TIME;
+			tempValue = getDetectTime();
+			lcd.clear();
+			lcd.setCursor(0, 0);
+			lcd.print(F("Detect time:"));
+
+			setTimeFunc = setDetectTime;
+			printValueFunc = printSeconds;
+			onButtonPressed = configureTimePressed;
+			nextStateFunc = stateConfigureRelayTime;
+
+			printValueFunc(tempValue);
+		}
+	}
+}
+
+void stateConfigureRelayTime() {
+	if (checkConfigTimeout()) {
+		if (SENSOR_STATE::CONFIGURE_RELAY_TIME != sensorState) {
+			sensorState = SENSOR_STATE::CONFIGURE_RELAY_TIME;
+			tempValue = getRelayTime();
+			lcd.clear();
+			lcd.setCursor(0, 0);
+			lcd.print(F("Relay time:"));
+
+			setTimeFunc = setRelayTime;
+			printValueFunc = printMillis;
+			onButtonPressed = configureTimePressed;
+			nextStateFunc = stateConfigureButtonsTime;
+
+			printValueFunc(tempValue);
+		}
+	}
+}
+
+void stateConfigureButtonsTime() {
+	if (checkConfigTimeout()) {
+		if (SENSOR_STATE::CONFIGURE_BUTTONS_TIME != sensorState) {
+			sensorState = SENSOR_STATE::CONFIGURE_BUTTONS_TIME;
+			tempValue = getButtonsTime();
+			lcd.clear();
+			lcd.setCursor(0, 0);
+			lcd.print(F("Buttons time:"));
+
+			setTimeFunc = setButtonsTime;
+			printValueFunc = printSeconds;
+			onButtonPressed = configureTimePressed;
+			nextStateFunc = stateConfigureSensorLevel;
+
+			printValueFunc(tempValue);
+		}
+	}
+}
+
+void stateConfigureSensorLevel() {
+	if (checkConfigTimeout()) {
+		if (SENSOR_STATE::CONFIGURE_SENSOR_LEVEL != sensorState) {
+			sensorState = SENSOR_STATE::CONFIGURE_SENSOR_LEVEL;
+			tempValue = getSensorActiveLow();
+			lcd.clear();
+			lcd.setCursor(0, 0);
+			lcd.print(F("Sensor level:"));
+
+			setLevelFunc = setSensorActiveLow;
+			printValueFunc = printLevel;
+			onButtonPressed = configureLevelPressed;
+			nextStateFunc = stateConfigureRelayLevel;
+
+			printValueFunc(tempValue);
+		}
+	}
+}
+
+void stateConfigureRelayLevel() {
+	if (checkConfigTimeout()) {
+		if (SENSOR_STATE::CONFIGURE_RELAY_LEVEL != sensorState) {
+			sensorState = SENSOR_STATE::CONFIGURE_RELAY_LEVEL;
+			tempValue = getRelayActiveLow();
+			lcd.clear();
+			lcd.setCursor(0, 0);
+			lcd.print(F("Relay level:"));
+
+			setLevelFunc = setRelayActiveLow;
+			printValueFunc = printLevel;
+			onButtonPressed = configureLevelPressed;
+			nextStateFunc = stateInit;
+
+			printValueFunc(tempValue);
+		}
+	}
+}
+
+
+void defaultButtonPressed(uint8_t button) {
+	if (button) {
+		stateFunc = stateConfigureTotalTime;
+		configTime = millis();
+	}
+}
+
+#endif
+
 // --------------------- StateMachine Functions -------------------
 
 
@@ -319,12 +659,9 @@ void setup() {
 	}
 
 #ifdef USE_LCD
-	pinMode(BUTTON_UP, INPUT_PULLUP);
-	pinMode(BUTTON_DOWN, INPUT_PULLUP);
-	pinMode(BUTTON_LEFT, INPUT_PULLUP);
-	pinMode(BUTTON_RIGHT, INPUT_PULLUP);
-
 	lcd.begin(16, 2);
+
+	initButtons();
 #endif
 
 	attachInterrupt(digitalPinToInterrupt(SENSOR), sensorInterrupt, CHANGE);
