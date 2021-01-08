@@ -103,22 +103,27 @@ LOW
 
 ### total
 `total = ?` -- узнать текущее значение параметра 'Total time'.
+
 `total = <число>` -- задать значение параметра 'Total time', например `total = 5`.
 
 ### detect
 `detect = ?` -- узнать текущее значение параметра 'Detect time'.
+
 `detect = <число>` -- задать значение параметра 'Detect time', например `detect = 3`. Должно быть меньше 'Total time'.
 
 ### relay
 `relay = ?` -- узнать текущее значение параметра 'Relay time'.
+
 `relay = <число>` -- задать значение параметра 'Relay time', например `relay = 400`. Должно быть меньше 'Total time' - 'Detect time'.
 
 ### buttons
 `buttons = ?` -- узнать текущее значение параметра 'Buttons time'.
+
 `buttons = <число>` -- задать значение параметра 'Buttons time', например `buttons = 20`.
 
 ### sensorLevel
 `sensorLevel = ?` -- узнать текущее значение параметра 'Sensor Level'.
+
 `sensorLevel = <low или high>` -- задать значение параметра 'Sensor Level', например `sensorLevel = low`. 
 
 ### relayLevel
