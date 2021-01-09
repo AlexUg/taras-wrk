@@ -43,6 +43,5 @@
 3dmodels/**/*.FCStd1
 
 # Eclipse Sloeber settings
-**/.settings/*
 **/sloeber.ino.cpp
 cppsources/Controller/Release/*
